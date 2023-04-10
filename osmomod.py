@@ -216,6 +216,7 @@ class OsmoModel(ModThread):
         TBW=0.64*weight
         ECF=0.33*TBW
         ICF=TBW-ECF
+        global IVF
         IVF= 11.9*weight/350
         water=IVF
         EVF=ECF-IVF
@@ -228,11 +229,15 @@ class OsmoModel(ModThread):
         vaso=0
         L_Naevf=[]
         thirst_level=0
+        T_drink=-100000
         #define drink function
         def drink():
             thirst_level=0
+            global IVF
             IVF=IVF+10
+            return
         #calculate urine volume reabsorption rate=97.8% data finding
+        urine_volume=0
         #if vaso>0:
             #urine_osmo=0.2*vaso*1000000
         #urine_volume=1/urine_osmo
@@ -254,12 +259,13 @@ class OsmoModel(ModThread):
         osmo_thresh=0.296
         v_grad=500
         v_max=20
-        # Run model loop
+        # Run model loop runtime(s)
         for i in range(1, runtime + 1):
 
             if i%100 == 0: osmobox.SetCount(i * 100 / runtime)     # Update run progress % in model panel
 
             water = water - (water * waterloss) - urine_volume
+            IVF=water
             Na_ivf=Na_ivf-2.2*osmo/2/100*urine_volume
             G=Na_ivf/IVF-Na_evf/EVF
             Na_ivf = Na_ivf-(G/0.0006)
@@ -279,9 +285,12 @@ class OsmoModel(ModThread):
                 if vaso>v_max: vaso=v_max
             #thirst level judge
             
-            if 9.06*(osmo-0.288)*1000>=3:
+            if vaso>15 and i-T_drink>900:
                 thirst_level=9.06*1000*(osmo-0.288)
                 drink()
+                T_drink=i
+            
+            water=IVF
 
             # Record model variables
             osmodata.water[i] = water
