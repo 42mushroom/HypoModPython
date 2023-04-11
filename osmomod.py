@@ -268,11 +268,11 @@ class OsmoModel(ModThread):
             IVF=water
             Na_ivf=Na_ivf-2.2*osmo/2/100*urine_volume
             G=Na_ivf/IVF-Na_evf/EVF
-            Na_ivf = Na_ivf-(G/0.0006)
-            Na_evf = Na_evf+(G/0.0006)
+            Na_ivf = Na_ivf-(G/0.6)
+            Na_evf = Na_evf+(G/0.6)
             salt = 2*Na_ivf
             EVF=EVF-G_w/1.61
-            IVF=IVF+G_w/1.61
+            ICF=ICF+G_w/1.61
             L_Naevf.append(Na_evf/EVF)
             if i>2:
                 G_w=L_Naevf[2]-L_Naevf[0]
