@@ -8,6 +8,7 @@ from hypoparams import *
 from hypodat import *
 from hypogrid import *
 
+
 #ID_heatflag = wx.NewIdRef()
 
 
@@ -48,6 +49,46 @@ class OsmoMod(Mod):
         self.osmodata = OsmoDat()
         self.PlotData()
         self.graphload = True
+
+    def GridOutput(self):
+        grid = self.gridbox.grids["Output"]
+        grid.CopyUndo()
+
+        params = self.osmobox.GetParams()
+        steps = int(params["runtime"])
+
+        col = 0
+        grid.ClearCol(col)
+        grid.SetCellValue(0, col, "Time (s)")
+        for i in range(steps): 
+            grid.SetCell(i+1, col, f"{i}") 
+
+        col = 1
+        grid.ClearCol(col)
+        grid.SetCellValue(0, col, "Water")
+        for i in range(steps):
+             grid.SetCell(i+1, col, f"{self.osmodata.water[i]:.4f}")
+
+        col = 2
+        grid.ClearCol(col)
+        grid.SetCellValue(0, col, "Salt")
+        for i in range(steps):
+             grid.SetCell(i+1, col, f"{self.osmodata.salt[i]:.4f}")
+
+        col = 3
+        grid.ClearCol(col)
+        grid.SetCellValue(0, col, "Osmo")
+        for i in range(steps):
+             grid.SetCell(i+1, col, f"{self.osmodata.osmo[i]:.4f}")
+
+        col = 4
+        grid.ClearCol(col)
+        grid.SetCellValue(0, col, "Vaso")
+        for i in range(steps):
+             grid.SetCell(i+1, col, f"{self.osmodata.vaso[i]:.4f}")
+
+        self.gridbox.notebook.ChangeSelection(self.gridbox.gridindex["Output"])
+
 
 
     ## PlotData() defines all the available plots, each linked to a data array in osmodata
@@ -117,7 +158,9 @@ class OsmoBox(ParamBox):
         self.paramset.AddCon("runtime", "Run Time", 2000, 1, 0)
         self.paramset.AddCon("hstep", "h Step", 1, 0.1, 1)
         self.paramset.AddCon("waterloss", "Water Loss", 0, 0.00001, 5)
-
+        self.paramset.AddCon("water_drink", "Water Drink", 0, 1, 10)
+        self.paramset.AddCon("inject_iv", "i.v.", 0, 0.5, 10)
+        self.paramset.AddCon("inject_ip", "i.p.", 0, 0.5, 10)
         self.ParamLayout(2)   # layout parameter controls in two columns
 
         # ----------------------------------------------------------------------------------
@@ -209,6 +252,8 @@ class OsmoModel(ModThread):
         # Read parameters
         runtime = int(osmoparams["runtime"])
         waterloss = osmoparams["waterloss"]
+        water_drink = osmoparams["water_drink"]
+        inject_iv = osmoparams["inject_iv"]
 
         # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(ug/ml)
         # Initialise variables
@@ -216,7 +261,6 @@ class OsmoModel(ModThread):
         TBW=0.64*weight
         ECF=0.33*TBW
         ICF=TBW-ECF
-        global IVF
         IVF= 11.9*weight/350
         water=IVF
         EVF=ECF-IVF
@@ -228,22 +272,18 @@ class OsmoModel(ModThread):
         G_w=0
         vaso=0
         L_Naevf=[]
+        global thirst_level
         thirst_level=0
-        T_drink=-100000
-        #define drink function
-        def drink():
-            thirst_level=0
-            global IVF
-            IVF=IVF+10
-            return
-        #calculate urine volume reabsorption rate=97.8% data finding
-        urine_volume=0
-        #if vaso>0:
+        T_drink=-10000
+        #calculate urine volume 
+        global urine_volume
+        urine_volume=0.0001736
             #urine_osmo=0.2*vaso*1000000
-        #urine_volume=1/urine_osmo
+        #urine_volume=1/urine_osmo    
+        #inject function
+        # def injectiv():
         
-
-
+                
 
         # Initialise model variable recording arrays
         osmodata.water.clear()
@@ -258,7 +298,7 @@ class OsmoModel(ModThread):
         osmodata.vaso[0] = vaso
         osmo_thresh=0.296
         v_grad=500
-        v_max=20
+        v_max=2
         # Run model loop runtime(s)
         for i in range(1, runtime + 1):
 
@@ -279,15 +319,24 @@ class OsmoModel(ModThread):
                 L_Naevf.pop(0)
                 
             osmo = salt / water
+            if i-T_drink<900: vaso=0
             if osmo<osmo_thresh: vaso=0
             else: 
                 vaso= v_grad*(osmo-osmo_thresh)
                 if vaso>v_max: vaso=v_max
-            #thirst level judge
-            
-            if vaso>15 and i-T_drink>900:
-                thirst_level=9.06*1000*(osmo-0.288)
-                drink()
+            #thirst level judge 
+            #the satisfy from mouth and viscera continue 900s
+            import numpy as np
+            if np.isnan(vaso):
+                vaso=0
+
+            j=round(2.5*vaso)
+            if j!= thirst_level:
+                thirst_level=j
+            if thirst_level>3 and i-T_drink>900:
+                IVF=IVF+water_drink
+                thirst_level=0
+                vaso=0
                 T_drink=i
             
             water=IVF
