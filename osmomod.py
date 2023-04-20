@@ -255,7 +255,7 @@ class OsmoModel(ModThread):
         water_drink = osmoparams["water_drink"]
         inject_iv = osmoparams["inject_iv"]
 
-        # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(ug/ml)
+        # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(miuU/ml)
         # Initialise variables
         weight = 400
         TBW=0.64*weight
@@ -275,11 +275,15 @@ class OsmoModel(ModThread):
         global thirst_level
         thirst_level=0
         T_drink=-10000
-        #calculate urine volume 
+        #calculate urine volume urine volume*urine osmo=0.000196049 vaso=k*urine osmo
+
         global urine_volume
-        urine_volume=0.0001736
-            #urine_osmo=0.2*vaso*1000000
-        #urine_volume=1/urine_osmo    
+        urine_volume=0
+        def urinevolumecal():
+            global vaso
+            if vaso>0:
+                urine_volume=1/vaso
+
         #inject function
         # def injectiv():
         
@@ -296,9 +300,7 @@ class OsmoModel(ModThread):
         osmodata.salt[0] = salt
         osmodata.osmo[0] = osmo
         osmodata.vaso[0] = vaso
-        osmo_thresh=0.296
-        v_grad=500
-        v_max=2
+        
         # Run model loop runtime(s)
         for i in range(1, runtime + 1):
 
@@ -319,25 +321,26 @@ class OsmoModel(ModThread):
                 L_Naevf.pop(0)
                 
             osmo = salt / water
-            if i-T_drink<900: vaso=0
-            if osmo<osmo_thresh: vaso=0
-            else: 
-                vaso= v_grad*(osmo-osmo_thresh)
-                if vaso>v_max: vaso=v_max
-            #thirst level judge 
+            osmo_thresh=0.29486
+            v_grad=500
+            v_max=20
             #the satisfy from mouth and viscera continue 900s
-            import numpy as np
-            if np.isnan(vaso):
-                vaso=0
+            if i-T_drink>900: 
+                if osmo<osmo_thresh: vaso=0
+                else: 
+                    vaso= v_grad*(osmo-osmo_thresh)
+                    if vaso>v_max: vaso=v_max
+            #thirst level judge 
 
-            j=round(2.5*vaso)
-            if j!= thirst_level:
-                thirst_level=j
+                thirst_level=0.25*v_grad*(osmo-osmo_thresh)
+
             if thirst_level>3 and i-T_drink>900:
                 IVF=IVF+water_drink
                 thirst_level=0
-                vaso=0
                 T_drink=i
+            #half-life of vasopressin in rats is 2.9min. The clear constant =  ln(2)/t(1/2) = ln(2)/175 ≈ 0.00396
+            if i-T_drink<=900:
+                vaso= (1-0.00396)*vaso
             
             water=IVF
 
