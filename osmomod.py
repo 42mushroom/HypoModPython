@@ -257,6 +257,7 @@ class OsmoModel(ModThread):
 
         # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(miuU/ml)
         # Initialise variables
+        global weight
         weight = 400
         TBW=0.64*weight
         ECF=0.33*TBW
@@ -275,14 +276,18 @@ class OsmoModel(ModThread):
         global thirst_level
         thirst_level=0
         T_drink=-10000
-        #calculate urine volume urine volume*urine osmo=0.000196049 vaso=k*urine osmo
+        #calculate urine 
+        # volume urine volume*vaso=0.001357951389
+        # vaso=0,volume=0.00151
 
-        global urine_volume
         urine_volume=0
         def urinevolumecal():
             global vaso
+            global weight
             if vaso>0:
-                urine_volume=1/vaso
+                urine_volume=0.001357951389/vaso
+            else: urine_volume=90.5/60/1000*weight
+            return urine_volume
 
         #inject function
         # def injectiv():
