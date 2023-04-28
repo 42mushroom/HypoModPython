@@ -161,6 +161,7 @@ class OsmoBox(ParamBox):
         self.paramset.AddCon("water_drink", "Water Drink", 0, 1, 10)
         self.paramset.AddCon("inject_iv", "i.v.", 0, 0.5, 10)
         self.paramset.AddCon("inject_ip", "i.p.", 0, 0.5, 10)
+        self.paramset.AddCon("inject_con", "saline con", 0, 0.5, 5)
         self.ParamLayout(2)   # layout parameter controls in two columns
 
         # ----------------------------------------------------------------------------------
@@ -254,11 +255,13 @@ class OsmoModel(ModThread):
         waterloss = osmoparams["waterloss"]
         water_drink = osmoparams["water_drink"]
         inject_iv = osmoparams["inject_iv"]
+        inject_ip = osmoparams["inject_ip"]
+        inject_con = osmoparams["inject_con"]
 
-        # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(miuU/ml)
+        # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(miuU/ml)concentration(mmol/ml)
         # Initialise variables
         global weight
-        weight = 400
+        weight = 300
         TBW=0.64*weight
         ECF=0.33*TBW
         ICF=TBW-ECF
@@ -288,9 +291,6 @@ class OsmoModel(ModThread):
                 urine_volume=0.001357951389/vaso
             else: urine_volume=90.5/60/1000*weight
             return urine_volume
-
-        #inject function
-        # def injectiv():
         
                 
 
@@ -305,6 +305,12 @@ class OsmoModel(ModThread):
         osmodata.salt[0] = salt
         osmodata.osmo[0] = osmo
         osmodata.vaso[0] = vaso
+
+        #inject function
+        water=water+inject_iv
+        EVF=EVF+inject_ip
+        Na_ivf=Na_ivf+inject_iv*inject_con
+        Na_evf=Na_evf+inject_ip*inject_con
         
         # Run model loop runtime(s)
         for i in range(1, runtime + 1):
@@ -315,8 +321,12 @@ class OsmoModel(ModThread):
             IVF=water
             Na_ivf=Na_ivf-2.2*osmo/2/100*urine_volume
             G=Na_ivf/IVF-Na_evf/EVF
-            Na_ivf = Na_ivf-(G/0.6)
-            Na_evf = Na_evf+(G/0.6)
+            if G<0:
+                Na_ivf = Na_ivf-(G/3.6)
+                Na_evf = Na_evf+(G/3.6)
+            else:
+                Na_ivf = Na_ivf-(G/0.6)
+                Na_evf = Na_evf+(G/0.6)
             salt = 2*Na_ivf
             EVF=EVF-G_w/1.61
             ICF=ICF+G_w/1.61
@@ -339,7 +349,7 @@ class OsmoModel(ModThread):
 
                 thirst_level=0.25*v_grad*(osmo-osmo_thresh)
 
-            if thirst_level>3 and i-T_drink>900:
+            if thirst_level>3 and i-T_drink>900 and water_drink>0:
                 IVF=IVF+water_drink
                 thirst_level=0
                 T_drink=i
