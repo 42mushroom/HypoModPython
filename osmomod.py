@@ -24,8 +24,6 @@ class OsmoMod(Mod):
             os.mkdir(self.path)
 
         self.mainwin = mainwin
-
-        self.protobox = OsmoProtoBox(self, "proto", "Input Protocols", wx.Point(0, 0), wx.Size(320, 500))
         self.gridbox = GridBox(self, "Data Grid", wx.Point(0, 0), wx.Size(320, 500), 100, 20)
         self.osmobox = OsmoBox(self, "osmo", "Osmo", wx.Point(0, 0), wx.Size(320, 500))
 
@@ -33,14 +31,12 @@ class OsmoMod(Mod):
         mainwin.gridbox = self.gridbox
 
         self.modtools[self.osmobox.boxtag] = self.osmobox
-        self.modtools[self.protobox.boxtag] = self.protobox
         self.modtools[self.gridbox.boxtag] = self.gridbox
 
         self.osmobox.Show(True)
         self.modbox = self.osmobox
 
-        mainwin.toolset.AddBox(self.osmobox)  
-        mainwin.toolset.AddBox(self.protobox)  
+        mainwin.toolset.AddBox(self.osmobox)   
         mainwin.toolset.AddBox(self.gridbox)  
 
         self.ModLoad()
@@ -169,8 +165,7 @@ class OsmoBox(ParamBox):
         runbox = self.RunBox()
         paramfilebox = self.StoreBoxSync()
 
-        ID_Proto = wx.NewIdRef()
-        self.AddPanelButton(ID_Proto, "Proto", self.mod.protobox)
+
         ID_Grid = wx.NewIdRef()
         self.AddPanelButton(ID_Grid, "Grid", self.mod.gridbox)
 
@@ -203,15 +198,6 @@ class OsmoProtoBox(ParamBox):
         # Parameter controls
         #
         # AddCon(tag string, display string, initial value, click increment, decimal places)
-        # ----------------------------------------------------------------------------------
-        self.paramset.AddCon("drinkstart", "Drink Start", 0, 1, 0)
-        self.paramset.AddCon("drinkstop", "Drink Stop", 0, 1, 0)
-        self.paramset.AddCon("drinkrate", "Drink Rate", 10, 1, 0)
-
-        self.ParamLayout(3)   # layout parameter controls in two columns
-
-        # ----------------------------------------------------------------------------------
-
         self.mainbox.AddSpacer(5)
         self.mainbox.Add(self.pconbox, 1, wx.ALIGN_CENTRE_HORIZONTAL|wx.ALIGN_CENTRE_VERTICAL|wx.ALL, 0)
         self.mainbox.AddStretchSpacer(5)
@@ -248,7 +234,7 @@ class OsmoModel(ModThread):
         osmodata = self.mod.osmodata
         osmobox = self.mod.osmobox
         osmoparams = self.mod.osmobox.GetParams()
-        protoparams = self.mod.protobox.GetParams()
+
 
         # Read parameters
         runtime = int(osmoparams["runtime"])
@@ -266,7 +252,7 @@ class OsmoModel(ModThread):
         ECF=0.33*TBW
         ICF=TBW-ECF
         IVF= 11.9*weight/350
-        water=IVF
+        water=ECF
         EVF=ECF-IVF
         Na_ivf = 144/1000*IVF
         Na_evf= 144/1000*EVF
@@ -307,8 +293,7 @@ class OsmoModel(ModThread):
         osmodata.vaso[0] = vaso
 
         #inject function
-        water=water+inject_iv
-        EVF=EVF+inject_ip
+        EVF=EVF+inject_ip+inject_iv
         Na_ivf=Na_ivf+inject_iv*inject_con
         Na_evf=Na_evf+inject_ip*inject_con
         
@@ -316,9 +301,10 @@ class OsmoModel(ModThread):
         for i in range(1, runtime + 1):
 
             if i%100 == 0: osmobox.SetCount(i * 100 / runtime)     # Update run progress % in model panel
-
             water = water - (water * waterloss) - urine_volume
-            IVF=water
+            EVF=water-IVF
+            if EVF<=0:
+                break
             Na_ivf=Na_ivf-2.2*osmo/2/100*urine_volume
             G=Na_ivf/IVF-Na_evf/EVF
             if G<0:
@@ -335,7 +321,7 @@ class OsmoModel(ModThread):
                 G_w=L_Naevf[2]-L_Naevf[0]
                 L_Naevf.pop(0)
                 
-            osmo = salt / water
+            osmo = salt / IVF
             osmo_thresh=0.29486
             v_grad=500
             v_max=20
@@ -350,14 +336,14 @@ class OsmoModel(ModThread):
                 thirst_level=0.25*v_grad*(osmo-osmo_thresh)
 
             if thirst_level>3 and i-T_drink>900 and water_drink>0:
-                IVF=IVF+water_drink
+                EVF=EVF+water_drink
                 thirst_level=0
                 T_drink=i
             #half-life of vasopressin in rats is 2.9min. The clear constant =  ln(2)/t(1/2) = ln(2)/175 ≈ 0.00396
             if i-T_drink<=900:
                 vaso= (1-0.00396)*vaso
             
-            water=IVF
+            water=IVF+EVF
 
             # Record model variables
             osmodata.water[i] = water
@@ -371,7 +357,6 @@ class OsmoModel(ModThread):
         osmodata.salt.xmax = runtime * 1.1
         osmodata.osmo.xmax = runtime * 1.1
         osmodata.vaso.xmax = runtime * 1.1
-
 
 
 
