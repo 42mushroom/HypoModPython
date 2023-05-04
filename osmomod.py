@@ -46,6 +46,42 @@ class OsmoMod(Mod):
         self.PlotData()
         self.graphload = True
 
+
+
+    ## PlotData() defines all the available plots, each linked to a data array in osmodata
+    ##
+    def PlotData(self):
+        # Data plots
+        #
+        # AddPlot(PlotDat(data array, xfrom, xto, yfrom, yto, label string, plot type, bin size, colour), tag string)
+        # ----------------------------------------------------------------------------------
+        self.plotbase.AddPlot(PlotDat(self.osmodata.water, 0, 2000, 0, 5000, "water", "line", 1, "blue"), "water")
+        self.plotbase.AddPlot(PlotDat(self.osmodata.salt, 0, 2000, 0, 100, "salt", "line", 1, "red"), "salt")
+        self.plotbase.AddPlot(PlotDat(self.osmodata.osmo, 0, 2000, 200, 400, "osmo", "line", 1, "green"), "osmo")
+        self.plotbase.AddPlot(PlotDat(self.osmodata.vaso, 0, 2000, 0, 100, "vaso", "line", 1, "purple"), "vaso")
+
+
+    def DefaultPlots(self):
+        if len(self.mainwin.panelset) > 0: self.mainwin.panelset[0].settag = "water"
+        if len(self.mainwin.panelset) > 1: self.mainwin.panelset[1].settag = "salt"
+        if len(self.mainwin.panelset) > 2: self.mainwin.panelset[2].settag = "osmo"
+        if len(self.mainwin.panelset) > 3: self.mainwin.panelset[3].settag = "vaso"
+
+
+
+    def OnModThreadComplete(self, event):
+        #runmute->Lock();
+        #runflag = 0;
+        #runmute->Unlock();
+        self.mainwin.scalebox.GraphUpdateAll()
+        #DiagWrite("Model thread OK\n\n")
+
+
+    def RunModel(self):
+        self.mainwin.SetStatusText("Osmo Model Run")
+        modthread = OsmoModel(self)
+        modthread.start()
+    
     def GridOutput(self):
         grid = self.gridbox.grids["Output"]
         grid.CopyUndo()
@@ -83,41 +119,13 @@ class OsmoMod(Mod):
         for i in range(steps):
              grid.SetCell(i+1, col, f"{self.osmodata.vaso[i]:.4f}")
 
+        col = 5
+        grid.ClearCol(col)
+        grid.SetCellValue(0, col, "thirst_level")
+        for i in range(steps):
+             grid.SetCell(i+1, col, f"{self.osmodata.vaso[i]:.4f}")
+
         self.gridbox.notebook.ChangeSelection(self.gridbox.gridindex["Output"])
-
-
-
-    ## PlotData() defines all the available plots, each linked to a data array in osmodata
-    ##
-    def PlotData(self):
-        # Data plots
-        #
-        # AddPlot(PlotDat(data array, xfrom, xto, yfrom, yto, label string, plot type, bin size, colour), tag string)
-        # ----------------------------------------------------------------------------------
-        self.plotbase.AddPlot(PlotDat(self.osmodata.water, 0, 2000, 0, 5000, "water", "line", 1, "blue"), "water")
-        self.plotbase.AddPlot(PlotDat(self.osmodata.salt, 0, 2000, 0, 100, "salt", "line", 1, "red"), "salt")
-        self.plotbase.AddPlot(PlotDat(self.osmodata.osmo, 0, 2000, 0, 100, "osmo", "line", 1, "green"), "osmo")
-        self.plotbase.AddPlot(PlotDat(self.osmodata.vaso, 0, 2000, 0, 100, "vaso", "line", 1, "purple"), "vaso")
-
-
-    def DefaultPlots(self):
-        if len(self.mainwin.panelset) > 0: self.mainwin.panelset[0].settag = "water"
-        if len(self.mainwin.panelset) > 1: self.mainwin.panelset[1].settag = "salt"
-        if len(self.mainwin.panelset) > 2: self.mainwin.panelset[2].settag = "osmo"
-
-
-    def OnModThreadComplete(self, event):
-        #runmute->Lock();
-        #runflag = 0;
-        #runmute->Unlock();
-        self.mainwin.scalebox.GraphUpdateAll()
-        #DiagWrite("Model thread OK\n\n")
-
-
-    def RunModel(self):
-        self.mainwin.SetStatusText("Osmo Model Run")
-        modthread = OsmoModel(self)
-        modthread.start()
 
 
 
@@ -152,12 +160,11 @@ class OsmoBox(ParamBox):
         # AddCon(tag string, display string, initial value, click increment, decimal places)
         # ----------------------------------------------------------------------------------
         self.paramset.AddCon("runtime", "Run Time", 2000, 1, 0)
-        self.paramset.AddCon("hstep", "h Step", 1, 0.1, 1)
         self.paramset.AddCon("waterloss", "Water Loss", 0, 0.00001, 5)
         self.paramset.AddCon("water_drink", "Water Drink", 0, 1, 10)
-        self.paramset.AddCon("inject_iv", "i.v.", 0, 0.5, 10)
-        self.paramset.AddCon("inject_ip", "i.p.", 0, 0.5, 10)
-        self.paramset.AddCon("inject_con", "saline con", 0, 0.5, 5)
+        self.paramset.AddCon("infusion_iv", "i.v.", 0, 0.0005, 10)
+        self.paramset.AddCon("infusion_ip", "i.p.", 0, 0.0005, 10)
+        self.paramset.AddCon("infusion_con", "saline con", 0, 0.5, 5)
         self.ParamLayout(2)   # layout parameter controls in two columns
 
         # ----------------------------------------------------------------------------------
@@ -240,11 +247,11 @@ class OsmoModel(ModThread):
         runtime = int(osmoparams["runtime"])
         waterloss = osmoparams["waterloss"]
         water_drink = osmoparams["water_drink"]
-        inject_iv = osmoparams["inject_iv"]
-        inject_ip = osmoparams["inject_ip"]
-        inject_con = osmoparams["inject_con"]
+        inject_iv = osmoparams["infusion_iv"]
+        inject_ip = osmoparams["infusion_ip"]
+        inject_con = osmoparams["infusion_con"]
 
-        # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/ml)vaso(miuU/ml)concentration(mmol/ml)
+        # weight(g)water(ml)IVF(ml)Na(mmol)salt(mmol)osmo(mmol/L)vaso(miuU/ml)concentration(mmol/ml)
         # Initialise variables
         global weight
         weight = 300
@@ -257,7 +264,7 @@ class OsmoModel(ModThread):
         Na_ivf = 144/1000*IVF
         Na_evf= 144/1000*EVF
         salt = 2*Na_ivf
-        osmo = salt/IVF
+        osmo = salt/IVF*1000
         G=Na_ivf/IVF-Na_evf/EVF
         G_w=0
         vaso=0
@@ -291,16 +298,20 @@ class OsmoModel(ModThread):
         osmodata.salt[0] = salt
         osmodata.osmo[0] = osmo
         osmodata.vaso[0] = vaso
-
-        #inject function
-        EVF=EVF+inject_ip+inject_iv
+        #injection function
+        water=water+inject_ip+inject_iv
         Na_ivf=Na_ivf+inject_iv*inject_con
         Na_evf=Na_evf+inject_ip*inject_con
+        
         
         # Run model loop runtime(s)
         for i in range(1, runtime + 1):
 
             if i%100 == 0: osmobox.SetCount(i * 100 / runtime)     # Update run progress % in model panel
+            #infusion function
+            # water=water+inject_ip+inject_iv
+            # Na_ivf=Na_ivf+inject_iv*inject_con
+            # Na_evf=Na_evf+inject_ip*inject_con
             water = water - (water * waterloss) - urine_volume
             EVF=water-IVF
             if EVF<=0:
@@ -321,12 +332,12 @@ class OsmoModel(ModThread):
                 G_w=L_Naevf[2]-L_Naevf[0]
                 L_Naevf.pop(0)
                 
-            osmo = salt / IVF
-            osmo_thresh=0.29486
-            v_grad=500
+            osmo = salt / IVF*1000
+            osmo_thresh=294.86
+            v_grad=0.5
             v_max=20
-            #the satisfy from mouth and viscera continue 900s
-            if i-T_drink>900: 
+            #the satisfy from mouth and viscera continue 1200s
+            if i-T_drink>1200: 
                 if osmo<osmo_thresh: vaso=0
                 else: 
                     vaso= v_grad*(osmo-osmo_thresh)
@@ -335,12 +346,12 @@ class OsmoModel(ModThread):
 
                 thirst_level=0.25*v_grad*(osmo-osmo_thresh)
 
-            if thirst_level>3 and i-T_drink>900 and water_drink>0:
+            if thirst_level>3 and i-T_drink>1200 and water_drink>0:
                 EVF=EVF+water_drink
                 thirst_level=0
                 T_drink=i
             #half-life of vasopressin in rats is 2.9min. The clear constant =  ln(2)/t(1/2) = ln(2)/175 ≈ 0.00396
-            if i-T_drink<=900:
+            if i-T_drink<=1200:
                 vaso= (1-0.00396)*vaso
             
             water=IVF+EVF
